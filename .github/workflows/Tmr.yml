@@ -23,10 +23,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            bc bison flex libssl-dev libelf-dev \
-            cpio kmod rsync python3 \
-            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo apt-get install -y bc bison flex libssl-dev libelf-dev cpio kmod rsync python3 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
       - name: Integrate KernelSU-Next
         run: |
@@ -38,12 +35,18 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           xdp = Path("include/net/xdp.h")
           filt = Path("include/linux/filter.h")
 
           xdp_s = xdp.read_text()
           filt_s = filt.read_text()
+
+          # Match the complete struct regardless of tabs/spaces.
+          pattern = re.compile(
+              r'(?ms)^[ \t]*struct[ \t]+xdp_buff[ \t]*\{.*?^[ \t]*\};[ \t]*\n?'
+          )
 
           block = """struct xdp_buff {
               void *data;
@@ -55,42 +58,37 @@ jobs:
 
           """
 
-          # Move struct xdp_buff into include/net/xdp.h.
-          if "struct xdp_buff {" not in xdp_s:
-              marker = "struct xdp_frame {\n"
-              if marker not in xdp_s:
-                  raise SystemExit("Cannot find struct xdp_frame in include/net/xdp.h")
-              xdp_s = xdp_s.replace(marker, block + marker, 1)
-              xdp.write_text(xdp_s)
-              print("Inserted struct xdp_buff into include/net/xdp.h")
-          else:
-              print("struct xdp_buff already exists in include/net/xdp.h")
+          # Remove EVERY existing definition from filter.h.
+          filt_s, removed = pattern.subn("", filt_s)
 
-          # Remove the old duplicate definition from include/linux/filter.h.
-          old = """struct xdp_buff {
-              void *data;
-              void *data_end;
-              void *data_meta;
-              void *data_hard_start;
-              struct xdp_rxq_info *rxq;
-          };
+          # Ensure exactly one definition exists in xdp.h.
+          xdp_s, xdp_removed = pattern.subn("", xdp_s)
 
-          """
-          if old in filt_s:
-              filt_s = filt_s.replace(old, "", 1)
-              filt.write_text(filt_s)
-              print("Removed duplicate struct xdp_buff from include/linux/filter.h")
-          else:
-              print("No duplicate struct xdp_buff block found in filter.h")
+          marker = "struct xdp_frame {\n"
+          if marker not in xdp_s:
+              raise SystemExit("Cannot find struct xdp_frame in include/net/xdp.h")
 
-          # Hard verification: exactly one definition must remain.
-          x = xdp.read_text()
-          f = filt.read_text()
+          xdp_s = xdp_s.replace(marker, block + marker, 1)
 
-          if x.count("struct xdp_buff {") != 1:
+          xdp.write_text(xdp_s)
+          filt.write_text(filt_s)
+
+          # Verify final state.
+          xdp_final = xdp.read_text()
+          filt_final = filt.read_text()
+
+          xdp_count = len(pattern.findall(xdp_final))
+          filt_count = len(pattern.findall(filt_final))
+
+          print(f"Removed {removed} old definition(s) from filter.h")
+          print(f"Removed {xdp_removed} old definition(s) from xdp.h before reinserting")
+          print(f"Final xdp.h definitions: {xdp_count}")
+          print(f"Final filter.h definitions: {filt_count}")
+
+          if xdp_count != 1:
               raise SystemExit("xdp.h must contain exactly one struct xdp_buff definition")
-          if f.count("struct xdp_buff {") != 0:
-              raise SystemExit("filter.h still contains a duplicate struct xdp_buff definition")
+          if filt_count != 0:
+              raise SystemExit("filter.h still contains struct xdp_buff")
 
           print("XDP structure placement: OK")
           PY
@@ -102,9 +100,6 @@ jobs:
           ./scripts/config --enable KSU
           ./scripts/config --enable EXT4_FS
           make ARCH=arm64 olddefconfig
-
-          echo "=== Final configuration ==="
-          grep -E '^CONFIG_(KPROBES|KSU|EXT4_FS)=' .config
 
       - name: Build kernel
         run: |
