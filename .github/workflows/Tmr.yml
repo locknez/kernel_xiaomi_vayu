@@ -43,7 +43,6 @@ jobs:
           xdp_s = xdp.read_text()
           filt_s = filt.read_text()
 
-          # Match the complete struct regardless of tabs/spaces.
           pattern = re.compile(
               r'(?ms)^[ \t]*struct[ \t]+xdp_buff[ \t]*\{.*?^[ \t]*\};[ \t]*\n?'
           )
@@ -58,10 +57,7 @@ jobs:
 
           """
 
-          # Remove EVERY existing definition from filter.h.
           filt_s, removed = pattern.subn("", filt_s)
-
-          # Ensure exactly one definition exists in xdp.h.
           xdp_s, xdp_removed = pattern.subn("", xdp_s)
 
           marker = "struct xdp_frame {\n"
@@ -73,7 +69,6 @@ jobs:
           xdp.write_text(xdp_s)
           filt.write_text(filt_s)
 
-          # Verify final state.
           xdp_final = xdp.read_text()
           filt_final = filt.read_text()
 
@@ -99,7 +94,17 @@ jobs:
           ./scripts/config --enable KPROBES
           ./scripts/config --enable KSU
           ./scripts/config --enable EXT4_FS
+
+          # Disable BPF JIT because this kernel's ARM64 BPF JIT
+          # expects struct members (is_func/jit_data) not present
+          # in this kernel source.
+          ./scripts/config --disable BPF_JIT
+
           make ARCH=arm64 olddefconfig
+
+      - name: Verify BPF configuration
+        run: |
+          grep -E '^CONFIG_(BPF|BPF_SYSCALL|BPF_JIT|KPROBES|KSU|EXT4_FS)=' .config || true
 
       - name: Build kernel
         run: |
