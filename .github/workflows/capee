@@ -1,0 +1,102 @@
+name: Build Helios KernelSU-Next + Fast Charge
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Kernel source branch
+        required: true
+        default: sixteen
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout Helios source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison flex libssl-dev libelf-dev cpio kmod rsync python3 \
+            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+
+      - name: Integrate KernelSU-Next
+        run: |
+          rm -rf KernelSU-Next
+          git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
+          bash KernelSU-Next/kernel/setup.sh
+
+      - name: Apply fast-charge ramp tweak
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("arch/arm64/boot/dts/qcom/vayu-sm8150.dtsi")
+          s = p.read_text()
+
+          anchor = "\tqcom,fcc-max-ua = <5900000>;\n"
+          prop = "\tqcom,fcc-step-size-ua = <200000>;\n"
+
+          if prop not in s:
+              if anchor not in s:
+                  raise SystemExit("FCC anchor not found; aborting without changing charging config")
+              s = s.replace(anchor, anchor + prop, 1)
+              p.write_text(s)
+
+          if s.count("qcom,fcc-step-size-ua = <200000>;") != 1:
+              raise SystemExit("Fast-charge step property verification failed")
+
+          print("Fast-charge ramp: 200000 uA steps")
+          print("Existing FCC/ICL and thermal limits are left unchanged")
+          PY
+
+      - name: Configure Vayu
+        run: |
+          make ARCH=arm64 vayu_user_defconfig
+          ./scripts/config --enable KPROBES
+          ./scripts/config --enable KSU
+          ./scripts/config --enable EXT4_FS
+
+          # This Helios tree has an ARM64 BPF JIT/source mismatch
+          # (bpf_prog.is_func / bpf_prog_aux.jit_data). KSU does not
+          # require BPF JIT, so disable it to keep the kernel build clean.
+          ./scripts/config --disable BPF_JIT
+
+          make ARCH=arm64 olddefconfig
+
+      - name: Verify configuration
+        run: |
+          set -eux
+          grep -E '^CONFIG_(KSU|KPROBES|BPF|BPF_JIT|QPNP_SMB5|CHARGER_LN8000|BQ2597X_CHARGE_PUMP)=' .config || true
+          grep -n 'qcom,fcc-step-size-ua' arch/arm64/boot/dts/qcom/vayu-sm8150.dtsi
+
+      - name: Build kernel
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          make -j2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image.gz-dtb
+
+      - name: Verify kernel output
+        run: |
+          set -eux
+          ls -lh arch/arm64/boot/
+          test -f arch/arm64/boot/Image.gz-dtb
+
+      - name: Collect kernel
+        run: |
+          mkdir -p artifacts
+          cp arch/arm64/boot/Image.gz-dtb artifacts/Image.gz-dtb
+
+      - name: Upload kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: Helios-vayu-KSU-Next-FastCharge
+          path: artifacts/Image.gz-dtb
+          if-no-files-found: error
+
