@@ -58,6 +58,13 @@ struct xdp_rxq_info {
 	struct xdp_mem_info mem;
 } ____cacheline_aligned; /* perf critical, avoid false-sharing */
 
+struct xdp_buff {
+	void *data;
+	void *data_end;
+	void *data_meta;
+	void *data_hard_start;
+	struct xdp_rxq_info *rxq;
+};
 
 struct xdp_frame {
 	void *data;
@@ -82,6 +89,7 @@ static inline void xdp_scrub_frame(struct xdp_frame *frame)
 static inline
 struct xdp_frame *convert_to_xdp_frame(struct xdp_buff *xdp)
 {
+	
 	struct xdp_frame *xdp_frame;
 	int metasize;
 	int headroom;
