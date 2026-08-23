@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
 
-            - name: Configure Vayu
+                  - name: Configure Vayu
         run: |
           make ARCH=arm64 vayu_user_defconfig
 
@@ -55,7 +55,7 @@ jobs:
           echo "=== XDP/BPF configuration ==="
           grep -E '^CONFIG_(BPF|BPF_SYSCALL|XDP|XDP_SOCKETS|NETFILTER)=' .config || true
 
-            - name: Build kernel
+                  - name: Build kernel
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
