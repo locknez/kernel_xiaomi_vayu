@@ -20,6 +20,7 @@
 #include <linux/set_memory.h>
 
 #include <net/sch_generic.h>
+#include <net/xdp.h>
 
 #include <uapi/linux/filter.h>
 #include <uapi/linux/bpf.h>
@@ -611,14 +612,6 @@ struct bpf_skb_data_end {
 	struct qdisc_skb_cb qdisc_cb;
 	void *data_meta;
 	void *data_end;
-};
-
-struct xdp_buff {
-	void *data;
-	void *data_end;
-	void *data_meta;
-	void *data_hard_start;
-	struct xdp_rxq_info *rxq;
 };
 
 struct bpf_redirect_info {
