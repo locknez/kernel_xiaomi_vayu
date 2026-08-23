@@ -1,0 +1,81 @@
+name: Build Vayu KernelSU-Next
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Kernel source branch
+        required: true
+        default: sixteen
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout kernel source
+        uses: actions/checkout@v4
+        with:
+          repository: tejas101k/kernel_xiaomi_vayu
+          ref: ${{ inputs.branch }}
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             bc bison flex libssl-dev libelf-dev             cpio kmod rsync python3             gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu             clang llvm lld
+
+      - name: Integrate KernelSU-Next
+        run: |
+          rm -rf KernelSU-Next
+          git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
+
+          if [ -x KernelSU-Next/kernel/setup.sh ]; then
+            bash KernelSU-Next/kernel/setup.sh
+          elif [ -f KernelSU-Next/kernel/setup.sh ]; then
+            bash KernelSU-Next/kernel/setup.sh
+          else
+            echo "KernelSU-Next setup script not found"
+            find KernelSU-Next -maxdepth 3 -type f | head -100
+            exit 1
+          fi
+
+      - name: Configure Vayu
+        run: |
+          make ARCH=arm64 vayu_user_defconfig
+
+          ./scripts/config --enable KPROBES
+          ./scripts/config --enable KSU
+          ./scripts/config --enable EXT4_FS
+
+          make ARCH=arm64 olddefconfig
+
+          echo "=== Final configuration ==="
+          grep -E '^CONFIG_(KPROBES|KSU|EXT4_FS)=' .config
+
+      - name: Build kernel
+        run: |
+          export ARCH=arm64
+          export CROSS_COMPILE=aarch64-linux-gnu-
+          export LLVM=1
+          export LLVM_IAS=1
+
+          make -j2             ARCH=arm64             CROSS_COMPILE=aarch64-linux-gnu-             LLVM=1             LLVM_IAS=1             Image.gz-dtb
+
+      - name: Collect kernel
+        run: |
+          mkdir -p artifacts
+          find arch/arm64/boot -maxdepth 1 -type f -printf '%p\n' | sort
+          cp arch/arm64/boot/Image.gz-dtb artifacts/ 2>/dev/null || true
+          cp arch/arm64/boot/Image artifacts/ 2>/dev/null || true
+          cp arch/arm64/boot/Image.gz artifacts/ 2>/dev/null || true
+
+          test -n "$(find artifacts -type f -maxdepth 1 -print -quit)"
+
+      - name: Upload kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: vayu-kernel-KSU-Next
+          path: artifacts/
+          if-no-files-found: error
+          
