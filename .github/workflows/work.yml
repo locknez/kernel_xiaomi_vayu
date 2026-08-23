@@ -1,4 +1,4 @@
-name: Build Vayu -Next
+name: Build Vayu KernelSU-Next
 
 on:
   workflow_dispatch:
@@ -34,19 +34,18 @@ jobs:
           git clone --depth=1 https://github.com/KernelSU-Next/KernelSU-Next.git KernelSU-Next
           bash KernelSU-Next/kernel/setup.sh
 
-      - name: Repair missing XDP structure
+      - name: Fix XDP structure placement
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          p = Path("include/net/xdp.h")
-          s = p.read_text()
+          xdp = Path("include/net/xdp.h")
+          filt = Path("include/linux/filter.h")
 
-          if "struct xdp_buff {" in s:
-              print("struct xdp_buff already exists; no patch needed")
-          else:
-              marker = "struct xdp_frame {\n"
-              patch = """struct xdp_buff {
+          xdp_s = xdp.read_text()
+          filt_s = filt.read_text()
+
+          block = """struct xdp_buff {
               void *data;
               void *data_end;
               void *data_meta;
@@ -55,45 +54,63 @@ jobs:
           };
 
           """
-              if marker not in s:
-                  raise SystemExit("Cannot find xdp_frame marker in include/net/xdp.h")
-              p.write_text(s.replace(marker, patch + marker, 1))
-              print("Inserted missing struct xdp_buff")
 
-          check = p.read_text()
-          if "struct xdp_buff {" not in check:
-              raise SystemExit("XDP repair verification failed")
+          # Move struct xdp_buff into include/net/xdp.h.
+          if "struct xdp_buff {" not in xdp_s:
+              marker = "struct xdp_frame {\n"
+              if marker not in xdp_s:
+                  raise SystemExit("Cannot find struct xdp_frame in include/net/xdp.h")
+              xdp_s = xdp_s.replace(marker, block + marker, 1)
+              xdp.write_text(xdp_s)
+              print("Inserted struct xdp_buff into include/net/xdp.h")
+          else:
+              print("struct xdp_buff already exists in include/net/xdp.h")
 
-          start = check.find("struct xdp_buff {")
-          print("=== XDP definition check ===")
-          print(check[start:start + 220])
+          # Remove the old duplicate definition from include/linux/filter.h.
+          old = """struct xdp_buff {
+              void *data;
+              void *data_end;
+              void *data_meta;
+              void *data_hard_start;
+              struct xdp_rxq_info *rxq;
+          };
+
+          """
+          if old in filt_s:
+              filt_s = filt_s.replace(old, "", 1)
+              filt.write_text(filt_s)
+              print("Removed duplicate struct xdp_buff from include/linux/filter.h")
+          else:
+              print("No duplicate struct xdp_buff block found in filter.h")
+
+          # Hard verification: exactly one definition must remain.
+          x = xdp.read_text()
+          f = filt.read_text()
+
+          if x.count("struct xdp_buff {") != 1:
+              raise SystemExit("xdp.h must contain exactly one struct xdp_buff definition")
+          if f.count("struct xdp_buff {") != 0:
+              raise SystemExit("filter.h still contains a duplicate struct xdp_buff definition")
+
+          print("XDP structure placement: OK")
           PY
 
       - name: Configure Vayu
         run: |
           make ARCH=arm64 vayu_user_defconfig
-
           ./scripts/config --enable KPROBES
           ./scripts/config --enable KSU
           ./scripts/config --enable EXT4_FS
-
           make ARCH=arm64 olddefconfig
 
           echo "=== Final configuration ==="
           grep -E '^CONFIG_(KPROBES|KSU|EXT4_FS)=' .config
 
-          echo "=== XDP/BPF configuration ==="
-          grep -E '^CONFIG_(BPF|BPF_SYSCALL|XDP|XDP_SOCKETS|NETFILTER)=' .config || true
-
       - name: Build kernel
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-
-          make -j2 \
-            ARCH=arm64 \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            Image.gz-dtb
+          make -j2 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- Image.gz-dtb
 
       - name: Verify kernel output
         run: |
@@ -112,4 +129,3 @@ jobs:
           name: vayu-kernel-KSU-Next
           path: artifacts/Image.gz-dtb
           if-no-files-found: error
-          
