@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
 
-      - name: Configure Vayu
+            - name: Configure Vayu
         run: |
           make ARCH=arm64 vayu_user_defconfig
 
@@ -52,15 +52,18 @@ jobs:
 
           echo "=== Final configuration ==="
           grep -E '^CONFIG_(KPROBES|KSU|EXT4_FS)=' .config
+          echo "=== XDP/BPF configuration ==="
+          grep -E '^CONFIG_(BPF|BPF_SYSCALL|XDP|XDP_SOCKETS|NETFILTER)=' .config || true
 
-      - name: Build kernel
+            - name: Build kernel
         run: |
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
-          export LLVM=1
-          export LLVM_IAS=1
 
-          make -j2             ARCH=arm64             CROSS_COMPILE=aarch64-linux-gnu-             LLVM=1             LLVM_IAS=1             Image.gz-dtb
+          make -j2 \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            Image.gz-dtb
 
       - name: Collect kernel
         run: |
