@@ -1,1 +1,1 @@
-obj-y	:= test_run.o
+obj-$(CONFIG_BPF) += test_run.o
