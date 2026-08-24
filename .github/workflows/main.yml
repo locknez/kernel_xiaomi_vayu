@@ -22,9 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            bc bison flex libssl-dev libelf-dev cpio kmod rsync python3 \
-            gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo apt-get install -y             bc bison flex libssl-dev libelf-dev cpio kmod rsync python3             gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
       - name: Integrate KernelSU-Next
         run: |
@@ -45,17 +43,12 @@ jobs:
 
           if prop not in s:
               if anchor not in s:
-                  raise SystemExit(
-                      "FCC anchor not found; aborting without changing charging config"
-                  )
-
+                  raise SystemExit("FCC anchor not found; aborting without changing charging config")
               s = s.replace(anchor, anchor + prop, 1)
               p.write_text(s)
 
           if s.count("qcom,fcc-step-size-ua = <200000>;") != 1:
-              raise SystemExit(
-                  "Fast-charge step property verification failed"
-              )
+              raise SystemExit("Fast-charge step property verification failed")
 
           print("Fast-charge ramp: 200000 uA steps")
           print("Existing FCC/ICL and thermal limits are left unchanged")
@@ -69,12 +62,10 @@ jobs:
           ./scripts/config --enable KSU
           ./scripts/config --enable EXT4_FS
 
-          # Disable incompatible BPF subsystem.
-          # This Helios 4.14 tree contains an older BPF structure/API,
-          # while the current BPF sources expect newer fields/functions.
-          # KernelSU-Next does not require BPF for its core operation.
-
+          # Generate the final dependency-resolved configuration first.
           make ARCH=arm64 olddefconfig
+
+          # Disable the incompatible BPF subsystem after olddefconfig.
           ./scripts/config --disable BPF
           ./scripts/config --disable BPF_SYSCALL
           ./scripts/config --disable BPF_JIT
@@ -84,32 +75,23 @@ jobs:
           set -eux
 
           echo "=== Kernel configuration ==="
-
-          grep -E \
-            '^CONFIG_(KSU|KPROBES|BPF|BPF_SYSCALL|BPF_JIT|EXT4_FS|QPNP_SMB5|CHARGER_LN8000|BQ2597X_CHARGE_PUMP)=' \
-            .config || true
+          grep -E '^CONFIG_(KSU|KPROBES|BPF|BPF_SYSCALL|BPF_JIT|EXT4_FS|QPNP_SMB5|CHARGER_LN8000|BQ2597X_CHARGE_PUMP)=' .config || true
 
           echo "=== Verify required configuration ==="
-
-          test "$(grep '^CONFIG_KSU=' .config)" = "CONFIG_KSU=y"
-          test "$(grep '^CONFIG_KPROBES=' .config)" = "CONFIG_KPROBES=y"
+          test "$(./scripts/config --state KSU)" = "y"
+          test "$(./scripts/config --state KPROBES)" = "y"
 
           echo "=== Verify BPF is disabled ==="
-
-          test "$(grep '^CONFIG_BPF=' .config)" = "CONFIG_BPF=n"
-          test "$(grep '^CONFIG_BPF_SYSCALL=' .config)" = "CONFIG_BPF_SYSCALL=n"
-          test "$(grep '^CONFIG_BPF_JIT=' .config)" = "CONFIG_BPF_JIT=n"
+          test "$(./scripts/config --state BPF)" = "n"
+          test "$(./scripts/config --state BPF_SYSCALL)" = "n"
+          test "$(./scripts/config --state BPF_JIT)" = "n"
 
           echo "=== Verify fast charging ==="
-
-          grep -n \
-            'qcom,fcc-step-size-ua' \
-            arch/arm64/boot/dts/qcom/vayu-sm8150.dtsi
+          grep -n 'qcom,fcc-step-size-ua'             arch/arm64/boot/dts/qcom/vayu-sm8150.dtsi
 
       - name: Build kernel
         run: |
           set -e
-
           export ARCH=arm64
           export CROSS_COMPILE=aarch64-linux-gnu-
 
@@ -119,26 +101,18 @@ jobs:
           echo "Memory:"
           free -h
 
-          make -j6 \
-            ARCH=arm64 \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            Image.gz-dtb
+          make -j4             ARCH=arm64             CROSS_COMPILE=aarch64-linux-gnu-             Image.gz-dtb
 
       - name: Verify kernel output
         run: |
           set -eux
-
           ls -lh arch/arm64/boot/
-
           test -f arch/arm64/boot/Image.gz-dtb
 
       - name: Collect kernel
         run: |
           mkdir -p artifacts
-
-          cp \
-            arch/arm64/boot/Image.gz-dtb \
-            artifacts/Image.gz-dtb
+          cp arch/arm64/boot/Image.gz-dtb artifacts/Image.gz-dtb
 
       - name: Upload kernel
         uses: actions/upload-artifact@v4
