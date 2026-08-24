@@ -62,10 +62,21 @@ jobs:
           ./scripts/config --enable KSU
           ./scripts/config --enable EXT4_FS
 
-          # Generate the final dependency-resolved configuration first.
+          # Resolve normal dependencies first
           make ARCH=arm64 olddefconfig
 
-          # Disable the incompatible BPF subsystem after olddefconfig.
+          # Disable incompatible BPF subsystem
+          ./scripts/config --disable BPF
+          ./scripts/config --disable BPF_SYSCALL
+          ./scripts/config --disable BPF_JIT
+          ./scripts/config --disable CGROUP_BPF
+          ./scripts/config --disable NET_CLS_BPF
+          ./scripts/config --disable NET_ACT_BPF
+
+          # Re-resolve configuration after disabling BPF
+          make ARCH=arm64 olddefconfig
+
+          # Force BPF off again after dependency resolution
           ./scripts/config --disable BPF
           ./scripts/config --disable BPF_SYSCALL
           ./scripts/config --disable BPF_JIT
@@ -77,22 +88,32 @@ jobs:
         run: |
           set -eux
 
-          echo "=== Kernel configuration ==="
-          grep -E '^CONFIG_(KSU|KPROBES|BPF|BPF_SYSCALL|BPF_JIT|EXT4_FS|QPNP_SMB5|CHARGER_LN8000|BQ2597X_CHARGE_PUMP)=' .config || true
+          echo "=== FINAL CONFIG ==="
+          echo "KSU=$(./scripts/config --state KSU)"
+          echo "KPROBES=$(./scripts/config --state KPROBES)"
+          echo "EXT4_FS=$(./scripts/config --state EXT4_FS)"
+          echo "BPF=$(./scripts/config --state BPF)"
+          echo "BPF_SYSCALL=$(./scripts/config --state BPF_SYSCALL)"
+          echo "BPF_JIT=$(./scripts/config --state BPF_JIT)"
+          echo "CGROUP_BPF=$(./scripts/config --state CGROUP_BPF)"
+          echo "NET_CLS_BPF=$(./scripts/config --state NET_CLS_BPF)"
+          echo "NET_ACT_BPF=$(./scripts/config --state NET_ACT_BPF)"
 
-          echo "=== Verify required configuration ==="
           test "$(./scripts/config --state KSU)" = "y"
           test "$(./scripts/config --state KPROBES)" = "y"
           test "$(./scripts/config --state EXT4_FS)" = "y"
 
-          echo "=== Verify BPF is disabled ==="
           test "$(./scripts/config --state BPF)" = "n"
           test "$(./scripts/config --state BPF_SYSCALL)" = "n"
           test "$(./scripts/config --state BPF_JIT)" = "n"
+          test "$(./scripts/config --state CGROUP_BPF)" = "n"
+          test "$(./scripts/config --state NET_CLS_BPF)" = "n"
+          test "$(./scripts/config --state NET_ACT_BPF)" = "n"
 
           echo "=== Verify fast charging ==="
-          grep -n 'qcom,fcc-step-size-ua'             arch/arm64/boot/dts/qcom/vayu-sm8150.dtsi
-
+          grep -n 'qcom,fcc-step-size-ua' \
+            arch/arm64/boot/dts/qcom/vayu-sm8150.dtsi
+            
       - name: Build kernel
         run: |
           set -e
