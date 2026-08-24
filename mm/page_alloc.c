@@ -1356,7 +1356,7 @@ static void __free_pages_boot_core(struct page *page, unsigned int order)
 	__ClearPageReserved(p);
 	set_page_count(p, 0);
 
-	atomic_long_add(nr_pages, &page_zone(page)->managed_pages);
+	adjust_managed_page_count(page, nr_pages);
 	set_page_refcounted(page);
 	__free_pages(page, order);
 }
