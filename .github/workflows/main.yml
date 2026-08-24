@@ -73,11 +73,11 @@ jobs:
           # This Helios 4.14 tree contains an older BPF structure/API,
           # while the current BPF sources expect newer fields/functions.
           # KernelSU-Next does not require BPF for its core operation.
+
+          make ARCH=arm64 olddefconfig
           ./scripts/config --disable BPF
           ./scripts/config --disable BPF_SYSCALL
           ./scripts/config --disable BPF_JIT
-
-          make ARCH=arm64 olddefconfig
 
       - name: Verify configuration
         run: |
