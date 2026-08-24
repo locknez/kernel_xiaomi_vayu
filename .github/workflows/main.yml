@@ -69,6 +69,9 @@ jobs:
           ./scripts/config --disable BPF
           ./scripts/config --disable BPF_SYSCALL
           ./scripts/config --disable BPF_JIT
+          ./scripts/config --disable CGROUP_BPF
+          ./scripts/config --disable NET_CLS_BPF
+          ./scripts/config --disable NET_ACT_BPF
 
       - name: Verify configuration
         run: |
