@@ -983,7 +983,6 @@ int msm_pcm_routing_reg_stream_app_type_cfg(
 	 */
 	last_be_id_configured[fedai_id][session_type] = be_id;
 
-done:
 	return ret;
 }
 EXPORT_SYMBOL(msm_pcm_routing_reg_stream_app_type_cfg);
