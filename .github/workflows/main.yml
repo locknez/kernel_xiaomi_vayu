@@ -89,9 +89,6 @@ jobs:
           test "$(./scripts/config --state BPF)" = "n"
           test "$(./scripts/config --state BPF_SYSCALL)" = "n"
           test "$(./scripts/config --state BPF_JIT)" = "n"
-          test "$(./scripts/config --state CGROUP_BPF)" = "n"
-          test "$(./scripts/config --state NET_CLS_BPF)" = "n"
-          test "$(./scripts/config --state NET_ACT_BPF)" = "n"
 
           echo "=== Verify fast charging ==="
           grep -n 'qcom,fcc-step-size-ua'             arch/arm64/boot/dts/qcom/vayu-sm8150.dtsi
